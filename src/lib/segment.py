@@ -36,23 +36,19 @@ class Segment:
 
     def __str__(self):
         # Optional, override this method for easier print(segmentA)
-        return  f"{'Sequence number':24} | {self.seqNum}\n\
-                  {'Acknowledgement number':24} | {self.ackNum}\n\
-                  {'Flags':24} | SYN: {self.flags.syn} ACK: {self.flags.ack} FIN: {self.flag.fin}\n\
-                  {'Checksum':24} | {hex(self.checkSum)}\n\
-                  {'Data Payload':24} | {self.dataPayload}"
+        return  f"{'Sequence number':24} | {self.seqNum}\n{'Acknowledgement number':24} | {self.ackNum}\n{'Flags':24} | SYN: {self.flag.SYN} ACK: {self.flag.ACK} FIN: {self.flag.FIN}\n{'Checksum':24} | {hex(self.checkSum)}\n{'Valid Checksum':24} | {self.valid_checksum()}\n{'Data Payload':24} | {self.dataPayload}\n"
 
     def __carry_around_add(self, a, b):
         c = a + b
-        return (c & 0xffff) + (c >> 16)
+        return (c & 0xffff)
 
     def __calculate_checksum(self) -> int:
         # Calculate checksum here, return checksum result
-        checkSum = 0
+        checkSum = 0x0000
 
         # start with header
-        checkSum = self.__carry_around_add(checkSum, (self.seqNum & 0xffff0000) >> 16 + self.seqNum & 0x0000ffff)
-        checkSum = self.__carry_around_add(checkSum, (self.ackNum & 0xffff0000) >> 16 + self.ackNum & 0x0000ffff)
+        checkSum = self.__carry_around_add(checkSum, ((self.seqNum & 0xffff0000) >> 16) + (self.seqNum & 0x0000ffff))
+        checkSum = self.__carry_around_add(checkSum, ((self.ackNum & 0xffff0000) >> 16) + (self.ackNum & 0x0000ffff))
 
         # add flag
         checkSum = self.__carry_around_add(checkSum, unpack('>b', self.flag.get_flag_bytes())[0])
@@ -62,10 +58,10 @@ class Segment:
         for i in range(0, len(self.dataPayload), 2):
             temp = self.dataPayload[i:i+2]
             if len(temp) == 1:
-                temp += pack('>x', 0)
+                temp += pack('>x')
             checkSum = self.__carry_around_add(checkSum, unpack('>h', temp)[0])
         
-        return ~checkSum & 0xffff
+        return 0xffff - checkSum
 
 
     # -- Setter --
@@ -102,15 +98,15 @@ class Segment:
         self.ackNum = header[1]
         self.flag = SegmentFlag(header[2])
         self.checkSum = header[3]
-        self.data = src[12:]
+        self.dataPayload = src[12:]
 
     def get_bytes(self) -> bytes:
         # Convert this object to pure bytes
         self.checkSum = self.__calculate_checksum()
-        return pack('>ii', self.seqNum, self.ackNum) + self.flag.get_flag_bytes() + pack('>xh', self.checkSum) + self.dataPayload
+        return pack('>ii', self.seqNum, self.ackNum) + self.flag.get_flag_bytes() + pack('>xH', self.checkSum) + self.dataPayload
 
 
     # -- Checksum --
     def valid_checksum(self) -> bool:
         # Use __calculate_checksum() and check integrity of this object
-        return self.__calculate_checksum() == 0xffff
+        return self.__calculate_checksum() == 0x0000
