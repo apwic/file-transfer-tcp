@@ -19,33 +19,28 @@ class Client:
         self.dest_port = args.dest
         self.client = con.Connection(self.ip, self.port)
 
+        #initiate client connection to server
+        self.client.send_data(Segment(), (self.ip, self.dest_port))
+
+
     def three_way_handshake(self):
-        # Three Way Handshake, client-side
-        print(f"[!] Client started on {self.ip}:{self.port}")
-        print(f"[!] Initiating three-way handshake to {self.ip}:{self.dest_port}")
-
-        # 1. client sent SYN flag to server
-        req = Segment()
-        req.set_flag([segment.SYN_FLAG])
-        self.client.send_data(req, (self.ip, self.dest_port))
-
-        # 2. client wait for server to send SYN-ACK resp
+        # Three way handshake, client-side
+        # 1. clent gets SYN flag from server
         dataSegment, addr = self.client.listen_single_segment()
-        print(dataSegment)
-        if (not dataSegment.valid_checksum()):
-            print(f"[!] Checksum failed")
-            exit(1)
-
-        if (dataSegment.get_flag().SYN and dataSegment.get_flag().ACK):
-            # 3. client sends ACK on SYN-ACK resp
-            ack = Segment()
-            ack.set_flag([segment.ACK_FLAG])
-            self.client.send_data(ack, (self.ip, self.dest_port))
-
-            print(f"[!] Three-way handshake with {self.ip}:{self.dest_port} success")
+        if (dataSegment.get_flag().SYN and dataSegment.valid_checksum()):
+            # 2. client sends SYN-ACK flag to server
+            synAck = Segment()
+            synAck.set_flag([segment.SYN_FLAG, segment.ACK_FLAG])
+            self.client.send_data(synAck, addr)
+            # 3. client gets ACK flag from server
+            dataSegment, addr = self.client.listen_single_segment()
+            if (dataSegment.get_flag().ACK and dataSegment.valid_checksum()):
+                print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} success")
+            else:
+                print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
+                exit(1)
         else:
-            print(f"[!] Three-way handshake with {self.ip}:{self.dest_port} failed")
-            print(f"[!] Closing connection")
+            print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
             exit(1)
 
     def listen_file_transfer(self):
@@ -57,7 +52,7 @@ class Client:
                 try:
                     dataSegment, addr = self.client.listen_single_segment()
                     if (dataSegment.valid_checksum()):
-                        seqNum = dataSegment.get_header["seqNum"]
+                        seqNum = dataSegment.get_header()["seqNum"]
                         if (seqNum == reqNum):
                             ackResp = Segment()
                             ackResp.set_flag([segment.ACK_FLAG])
