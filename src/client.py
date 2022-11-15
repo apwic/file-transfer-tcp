@@ -21,6 +21,7 @@ class Client:
 
         #initiate client connection to server
         self.client.send_data(Segment(), (self.ip, self.dest_port))
+        print(f"[!] Client is running on {self.ip}:{self.port}")
 
 
     def three_way_handshake(self):

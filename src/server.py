@@ -4,6 +4,7 @@ import lib.segment as segment
 import lib.argParser as argParser
 import lib.config as config
 import socket
+import math
 
 class Server:
     def __init__(self):
@@ -22,6 +23,8 @@ class Server:
         with open(self.path, "rb") as f:
             f.seek(0,2)
             self.fileSize = f.tell()
+
+        self.segment = math.ceil(self.fileSize / (config.SEGMENT_SIZE))
 
         print(f"[!] Server is running on {self.ip}:{self.port}")
         print(f"[!] Waiting for client to connect...")
@@ -51,10 +54,8 @@ class Server:
     def start_file_transfer(self):
         # Handshake & file transfer for all client
         print(f"[!] Starting three way handshake with clients...")
-        print(self.addrList)
         for clients in self.addrList:
             if (self.three_way_handshake(clients)):
-                print("haha")
                 print(f"[!] Three way handshake with {clients[0]}:{clients[1]} success")
                 print(f"[!] Starting file transfer with {clients[0]}:{clients[1]}")
                 self.file_transfer(clients)
@@ -70,13 +71,13 @@ class Server:
 
         # window size might be bigger than file size
         # need to check window bound
-        windowBound = min(config.WINDOW_SIZE, self.fileSize)
+        windowBound = min(config.WINDOW_SIZE, self.segment)
         seqBase = 0
         seqMax = config.WINDOW_SIZE
 
         # send file per segment
         with open(self.path, "rb") as f:
-            while seqBase < self.fileSize:
+            while seqBase < self.segment:
                 # Send segment
                 for i in range(seqBase, windowBound):
                     f.seek(i * config.SEGMENT_DATA_SIZE)
@@ -94,12 +95,12 @@ class Server:
                         if (dataSegment.get_flag().ACK and dataSegment.valid_checksum() and addr == client_addr):
                             if (dataSegment.get_header()["ackNum"] == seqBase):
                                 seqBase += 1
-                                windowBound = min(seqBase + config.WINDOW_SIZE, self.fileSize)
+                                windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
                             # ackNum > seqBase it means that client already received the segment
                             # but ACK flag is lost
                             elif (dataSegment.get_header()["ackNum"] > seqBase):
                                 seqBase = dataSegment.get_header()["ackNum"] + 1
-                                windowBound = min(seqBase + config.WINDOW_SIZE, self.fileSize)
+                                windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
                             print(f"[Segment SEQ={seqBase}] ACK from {addr[0]}:{addr[1]}")
                         else:
                             print(f"[Segment SEQ={seqBase}] Error from {addr[0]}:{addr[1]}")
@@ -135,7 +136,6 @@ class Server:
 
         # 2. server waits for client to send SYN-ACK resp
         dataSegment, addr = self.server.listen_single_segment()
-        print(dataSegment)
         if (not dataSegment.valid_checksum()):
             print(f"[!] Checksum failed")
             return False
