@@ -24,3 +24,6 @@ class Connection:
     def close_socket(self):
         # Release UDP socket
         self.sock.close()
+
+    def set_timeout(self, timeout):
+        self.sock.settimeout(timeout)

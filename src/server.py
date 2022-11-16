@@ -54,6 +54,7 @@ class Server:
     def start_file_transfer(self):
         # Handshake & file transfer for all client
         print(f"[!] Starting three way handshake with clients...")
+        self.server.set_timeout(config.TRANSFER_TIMEOUT)
         for clients in self.addrList:
             if (self.three_way_handshake(clients)):
                 print(f"[!] Three way handshake with {clients[0]}:{clients[1]} success")

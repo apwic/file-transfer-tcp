@@ -27,25 +27,31 @@ class Client:
     def three_way_handshake(self):
         # Three way handshake, client-side
         # 1. clent gets SYN flag from server
-        dataSegment, addr = self.client.listen_single_segment()
-        if (dataSegment.get_flag().SYN and dataSegment.valid_checksum()):
-            # 2. client sends SYN-ACK flag to server
-            synAck = Segment()
-            synAck.set_flag([segment.SYN_FLAG, segment.ACK_FLAG])
-            self.client.send_data(synAck, addr)
-            # 3. client gets ACK flag from server
+        try:
             dataSegment, addr = self.client.listen_single_segment()
-            if (dataSegment.get_flag().ACK and dataSegment.valid_checksum()):
-                print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} success")
+            self.client.set_timeout(config.ACK_TIMEOUT)
+            if (dataSegment.get_flag().SYN and dataSegment.valid_checksum()):
+                # 2. client sends SYN-ACK flag to server
+                synAck = Segment()
+                synAck.set_flag([segment.SYN_FLAG, segment.ACK_FLAG])
+                self.client.send_data(synAck, addr)
+                # 3. client gets ACK flag from server
+                dataSegment, addr = self.client.listen_single_segment()
+                if (dataSegment.get_flag().ACK and dataSegment.valid_checksum()):
+                    print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} success")
+                else:
+                    print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} ACK Flag not received")
+                    print(f"ACK: {dataSegment.get_flag().ACK} AND Checksum: {dataSegment.valid_checksum()}")
             else:
                 print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
                 exit(1)
-        else:
-            print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
+        except socket.timeout:
+            print(f"[!] Three-way handshake with server timed out")
             exit(1)
 
     def listen_file_transfer(self):
         # File transfer, client-side
+        self.client.set_timeout(config.LISTEN_TRANSFER_TIMEOUT)
         fin  = False
         reqNum = 0
         with open(self.path, "wb") as f:
