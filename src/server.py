@@ -24,7 +24,7 @@ class Server:
             f.seek(0,2)
             self.fileSize = f.tell()
 
-        self.segment = math.ceil(self.fileSize / (config.SEGMENT_SIZE))
+        self.segment = math.ceil(self.fileSize / (config.SEGMENT_DATA_SIZE))
 
         print(f"[!] Server is running on {self.ip}:{self.port}")
         print(f"[!] Waiting for client to connect...")
@@ -64,7 +64,7 @@ class Server:
                 print(f"[!] Three way handshake with {clients[0]}:{clients[1]} failed")
 
 
-    def file_transfer(self, client_addr : ("ip", "port")):
+    def file_transfer(self, client_addr):
         # File transfer, server-side, Send file to 1 client
         # N  := window size
         # Sb := sequence base
@@ -74,12 +74,36 @@ class Server:
         # need to check window bound
         windowBound = min(config.WINDOW_SIZE, self.segment)
         seqBase = 0
-        seqMax = config.WINDOW_SIZE
 
         # send file per segment
         with open(self.path, "rb") as f:
+            # Send segment
+            for i in range(seqBase, windowBound):
+                f.seek(i * config.SEGMENT_DATA_SIZE)
+                dataSegment = Segment()
+                dataSegment.set_header({"seqNum": i, "ackNum": 0})
+                dataSegment.set_payload(f.read(config.SEGMENT_DATA_SIZE))
+                self.server.send_data(dataSegment, client_addr)
+                print(f"[Segment SEQ={i}] Sent to {client_addr[0]}:{client_addr[1]}")
+
             while seqBase < self.segment:
-                # Send segment
+                try:
+                    dataSegment, addr = self.server.listen_single_segment()
+                    if (dataSegment.get_flag().ACK and dataSegment.valid_checksum() and addr == client_addr):
+                        if (dataSegment.get_header()["ackNum"] == seqBase):
+                            seqBase += 1
+                            windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
+                        # ackNum > seqBase it means that client already received the segment
+                        # but ACK flag is lost
+                        elif (dataSegment.get_header()["ackNum"] > seqBase):
+                            seqBase = dataSegment.get_header()["ackNum"] + 1
+                            windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
+                        print(f"[Segment SEQ={seqBase}] ACK from {addr[0]}:{addr[1]}")
+                    else:
+                        print(f"[Segment SEQ={seqBase}] Error from {addr[0]}:{addr[1]}")
+                except socket.timeout:
+                    print(f"[!] Timeout, resending segment from {seqBase} to {windowBound}")
+
                 for i in range(seqBase, windowBound):
                     f.seek(i * config.SEGMENT_DATA_SIZE)
                     dataSegment = Segment()
@@ -87,27 +111,6 @@ class Server:
                     dataSegment.set_payload(f.read(config.SEGMENT_DATA_SIZE))
                     self.server.send_data(dataSegment, client_addr)
                     print(f"[Segment SEQ={i}] Sent to {client_addr[0]}:{client_addr[1]}")
-
-                # Listen for ACK
-                seqMax = windowBound
-                while seqBase < seqMax:
-                    try:
-                        dataSegment, addr = self.server.listen_single_segment()
-                        if (dataSegment.get_flag().ACK and dataSegment.valid_checksum() and addr == client_addr):
-                            if (dataSegment.get_header()["ackNum"] == seqBase):
-                                seqBase += 1
-                                windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
-                            # ackNum > seqBase it means that client already received the segment
-                            # but ACK flag is lost
-                            elif (dataSegment.get_header()["ackNum"] > seqBase):
-                                seqBase = dataSegment.get_header()["ackNum"] + 1
-                                windowBound = min(seqBase + config.WINDOW_SIZE, self.segment)
-                            print(f"[Segment SEQ={seqBase}] ACK from {addr[0]}:{addr[1]}")
-                        else:
-                            print(f"[Segment SEQ={seqBase}] Error from {addr[0]}:{addr[1]}")
-                    except socket.timeout:
-                        print(f"[!] Timeout, resending segment from {seqBase} to {windowBound}")
-                        break
         
         # send FIN to client
         dataSegment = Segment()
