@@ -1,8 +1,3 @@
-# GAK_PENTING
-CLIENT_PORT = 1920
-SERVER_PORT = 1356  #gabutuh tapi dokumentasi aja
-                    #SOALNYA ADA YANG JANJI DATENG JAM 13.00
-
 LOCAL_IP = "localhost"
 TRANSFER_TIMEOUT = 0.5
 LISTEN_TRANSFER_TIMEOUT = 0.5

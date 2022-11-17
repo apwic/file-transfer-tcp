@@ -8,7 +8,6 @@ class Connection:
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((ip, port))
-        # self.sock.settimeout(30) # wip: change to constant
 
     def send_data(self, msg : Segment, dest):
         # Send single segment into destination
@@ -16,7 +15,7 @@ class Connection:
 
     def listen_single_segment(self):
         # Listen single UDP datagram within timeout and convert into segment
-        data, addr = self.sock.recvfrom(32768) # wip: change to constant
+        data, addr = self.sock.recvfrom(32768)
         dataSegment = Segment()
         dataSegment.set_from_bytes(data)
         return dataSegment, addr

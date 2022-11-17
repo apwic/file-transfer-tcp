@@ -93,7 +93,7 @@ class Segment:
     # -- Marshalling --
     def set_from_bytes(self, src : bytes):
         # From pure bytes, unpack() and set into python variable
-        header = unpack('>iibxh', src[:12]) # WTF IS THIS???
+        header = unpack('>iibxh', src[:12])
         self.seqNum = header[0]
         self.ackNum = header[1]
         self.flag = SegmentFlag(header[2])

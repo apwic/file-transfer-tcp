@@ -54,9 +54,6 @@ class Server:
                     print(f"[{i + 1}] {self.addrList[i][0]}:{self.addrList[i][1]}")
                 print()
                 break
-            
-        # loop tiap client
-        # self.three_way_handshake()
 
     def start_file_transfer(self):
         # Handshake & file transfer for all client
