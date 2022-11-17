@@ -54,14 +54,10 @@ class Server:
     def start_file_transfer(self):
         # Handshake & file transfer for all client
         print(f"[!] Starting three way handshake with clients...")
-        self.server.set_timeout(config.TRANSFER_TIMEOUT)
         for clients in self.addrList:
-            if (self.three_way_handshake(clients)):
-                print(f"[!] Three way handshake with {clients[0]}:{clients[1]} success")
-                print(f"[!] Starting file transfer with {clients[0]}:{clients[1]}")
-                self.file_transfer(clients)
-            else:
-                print(f"[!] Three way handshake with {clients[0]}:{clients[1]} failed")
+            self.three_way_handshake(clients)
+            print(f"[!] Starting file transfer with {clients[0]}:{clients[1]}")
+            self.file_transfer(clients)
 
 
     def file_transfer(self, client_addr):
@@ -74,6 +70,9 @@ class Server:
         # need to check window bound
         windowBound = min(config.WINDOW_SIZE, self.segment)
         seqBase = 0
+
+        # set timeout for file transfer
+        self.server.set_timeout(config.TRANSFER_TIMEOUT)
 
         # send file per segment
         with open(self.path, "rb") as f:
@@ -113,49 +112,68 @@ class Server:
                     print(f"[Segment SEQ={i}] Sent to {client_addr[0]}:{client_addr[1]}")
         
         # send FIN to client
+        # will be sent repeatedly to ensure FIN is received by client
+        finAck = False
         dataSegment = Segment()
         dataSegment.set_flag([segment.FIN_FLAG])
-        self.server.send_data(dataSegment, client_addr)
-        print(f"[!] FIN file transfer sent to {client_addr[0]}:{client_addr[1]}")
+        self.server.set_timeout(config.SERVER_TIMEOUT)
+        while (not(finAck)):
+            try:
+                self.server.send_data(dataSegment, client_addr)
+                print(f"[!] FIN file transfer sent to {client_addr[0]}:{client_addr[1]}")
+                # listen for FIN-ACK
+                respFlag = self.server.listen_single_segment()[0].get_flag()
+                if (respFlag.FIN and respFlag.ACK):
+                    print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} success")
+                    finAck = True
+                else:
+                    print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} failed. Resending FIN...")
+            except socket.timeout:
+                # ignore FIN-ACK after certain period of time (assume FIN is received)
+                # for when client already sends FIN-ACK, yet server does not receive it
+                print(f"[!] ACK file transer with {client_addr[0]}:{client_addr[1]} time out. Assuming FIN is received")
+                finAck = True
 
-        # listen for ACK
-        try:
-            if (self.server.listen_single_segment()[0].get_flag().ACK):
-                print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} success")
-            else:
-                print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} failed")
-        except socket.timeout:
-            print(f"[!] ACK file transer with {client_addr[0]}:{client_addr[1]} time out")
 
-
-
-    def three_way_handshake(self, client_addr) -> bool:
+    def three_way_handshake(self, client_addr):
         # Three Way Handshake, server-side as initiator
-        print(f"[!] Server initiating three-way handshake to client {client_addr[0]}:{client_addr[1]}")
 
-        # 1. server sends SYN flag to destined client
-        req = Segment()
-        req.set_flag([segment.SYN_FLAG])
-        self.server.send_data(req, (client_addr))
+        # set timeout for handshake
+        self.server.set_timeout(config.SERVER_TIMEOUT)
 
-        # 2. server waits for client to send SYN-ACK resp
-        dataSegment, addr = self.server.listen_single_segment()
-        if (not dataSegment.valid_checksum()):
-            print(f"[!] Checksum failed")
-            return False
-
-        if (dataSegment.get_flag().SYN and dataSegment.get_flag().ACK):
-            # 3. server sends ACK on SYN-ACK resp
-            ack = Segment()
-            ack.set_flag([segment.ACK_FLAG])
-            self.server.send_data(ack, (client_addr))
-
-            print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} success")
-            return True
-        else:
-            print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} failed")
-            print(f"[!] Closing connection")
-            return False
+        # Will be repeated until handshake is successful
+        success = False
+        while (not(success)):
+            print(f"[!] Server initiating three-way handshake to client {client_addr[0]}:{client_addr[1]}")
+            # 1. server sends SYN flag to destined client
+            req = Segment()
+            req.set_flag([segment.SYN_FLAG])
+            self.server.send_data(req, (client_addr))
+            try:
+                # 2. server waits for client to send SYN-ACK resp
+                dataSegment, addr = self.server.listen_single_segment()
+                if (not dataSegment.valid_checksum()):
+                    print(f"[!] Checksum failed")
+                if (dataSegment.get_flag().SYN and dataSegment.get_flag().ACK):
+                    # 3. server sends ACK on SYN-ACK resp
+                    ack = Segment()
+                    ack.set_flag([segment.ACK_FLAG])
+                    self.server.send_data(ack, (client_addr))
+                    # 4. server waits for client's response (ACK received or not)
+                    dataSegment, addr = self.server.listen_single_segment()
+                    if (not dataSegment.valid_checksum()):
+                        print(f"[!] Checksum failed")
+                    if (dataSegment.get_flag().ACK):
+                        print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} success")
+                        success = True
+                    else:
+                        print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} failed")
+                        print(f"[!] Restarting handshake...")
+                else:
+                    print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} failed")
+                    print(f"[!] Restarting handshake...")
+            except socket.timeout:
+                print(f"[!] Client not responding. Restarting handshake...")
 
 
 if __name__ == '__main__':

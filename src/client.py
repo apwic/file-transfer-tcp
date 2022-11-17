@@ -23,31 +23,46 @@ class Client:
         self.client.send_data(Segment(), (self.ip, self.dest_port))
         print(f"[!] Client is running on {self.ip}:{self.port}")
 
+    def notify_handshake_failure(self):
+        # sends empty flag to notify handshake failure to server
+        # triggers server to repeat handshake
+        failed = Segment()
+        self.client.send_data(failed, (self.ip, self.dest_port))
 
     def three_way_handshake(self):
         # Three way handshake, client-side
-        # 1. clent gets SYN flag from server
-        try:
-            dataSegment, addr = self.client.listen_single_segment()
-            self.client.set_timeout(config.ACK_TIMEOUT)
-            if (dataSegment.get_flag().SYN and dataSegment.valid_checksum()):
-                # 2. client sends SYN-ACK flag to server
-                synAck = Segment()
-                synAck.set_flag([segment.SYN_FLAG, segment.ACK_FLAG])
-                self.client.send_data(synAck, addr)
-                # 3. client gets ACK flag from server
+        # Will be repeated until handshake is successful
+        success = False
+        while (not (success)):
+            try:
+                # 1. clent gets SYN flag from server
                 dataSegment, addr = self.client.listen_single_segment()
-                if (dataSegment.get_flag().ACK and dataSegment.valid_checksum()):
-                    print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} success")
+                self.client.set_timeout(config.ACK_TIMEOUT)
+                if (dataSegment.get_flag().SYN and dataSegment.valid_checksum()):
+                    # 2. client sends SYN-ACK flag to server
+                    synAck = Segment()
+                    synAck.set_flag([segment.SYN_FLAG, segment.ACK_FLAG])
+                    self.client.send_data(synAck, addr)
+                    # 3. client gets ACK flag from server
+                    dataSegment, addr = self.client.listen_single_segment()
+                    if (dataSegment.get_flag().ACK and dataSegment.valid_checksum()):
+                        print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} success")
+                        # sends ACK flag to notify server
+                        ack = Segment()
+                        ack.set_flag([segment.ACK_FLAG])
+                        self.client.send_data(ack, addr)
+                        success = True
+                    else:
+                        print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} ACK Flag not received")
+                        print(f"ACK: {dataSegment.get_flag().ACK} AND Checksum: {dataSegment.valid_checksum()}")
+                        self.notify_handshake_failure()
                 else:
-                    print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} ACK Flag not received")
-                    print(f"ACK: {dataSegment.get_flag().ACK} AND Checksum: {dataSegment.valid_checksum()}")
-            else:
-                print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
-                exit(1)
-        except socket.timeout:
-            print(f"[!] Three-way handshake with server timed out")
-            exit(1)
+                    print(f"[!] Three-way handshake with server {addr[0]}:{addr[1]} failed")
+                    self.notify_handshake_failure()
+            except socket.timeout:
+                print(f"[!] Three-way handshake with server timed out")
+                self.notify_handshake_failure()
+
 
     def listen_file_transfer(self):
         # File transfer, client-side
@@ -70,9 +85,10 @@ class Client:
                             reqNum += 1
                         elif (dataSegment.get_flag().FIN):
                             fin = True
-                            ackResp = Segment()
-                            ackResp.set_flag([segment.ACK_FLAG])
-                            self.client.send_data(ackResp, (self.ip, self.dest_port))
+                            # send FIN-ACK to notify receival of FIN
+                            finAckResp = Segment()
+                            finAckResp.set_flag([segment.ACK_FLAG, segment.FIN_FLAG])
+                            self.client.send_data(finAckResp, (self.ip, self.dest_port))
                             print(f"[!] File transfer completed, sending FIN")
                     else:
                         print(f"[Segment SEQ={seqNum}] Checksum failed. Ack prev sequence number")
