@@ -141,9 +141,10 @@ class Server:
         # set timeout for handshake
         self.server.set_timeout(config.SERVER_TIMEOUT)
 
-        # Will be repeated until handshake is successful
-        success = False
-        while (not(success)):
+        syn = False
+        ack = False
+        # will repeatedly send SYN flag until SYN-ACK is received
+        while (not(syn)):
             print(f"[!] Server initiating three-way handshake to client {client_addr[0]}:{client_addr[1]}")
             # 1. server sends SYN flag to destined client
             req = Segment()
@@ -155,25 +156,30 @@ class Server:
                 if (not dataSegment.valid_checksum()):
                     print(f"[!] Checksum failed")
                 if (dataSegment.get_flag().SYN and dataSegment.get_flag().ACK):
-                    # 3. server sends ACK on SYN-ACK resp
-                    ack = Segment()
-                    ack.set_flag([segment.ACK_FLAG])
-                    self.server.send_data(ack, (client_addr))
-                    # 4. server waits for client's response (ACK received or not)
-                    dataSegment, addr = self.server.listen_single_segment()
-                    if (not dataSegment.valid_checksum()):
-                        print(f"[!] Checksum failed")
-                    if (dataSegment.get_flag().ACK):
-                        print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} success")
-                        success = True
-                    else:
-                        print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} failed")
-                        print(f"[!] Restarting handshake...")
+                    syn = True
                 else:
                     print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} failed")
                     print(f"[!] Restarting handshake...")
             except socket.timeout:
                 print(f"[!] Client not responding. Restarting handshake...")
+
+        # will send ACK flag and resend it if SYN-ACK is received again
+        while (not(ack)):
+            try:
+                # 3. server sends ACK on SYN-ACK resp
+                ackFlag = Segment()
+                ackFlag.set_flag([segment.ACK_FLAG])
+                self.server.send_data(ackFlag, (client_addr))
+                # 4. server waits for client's response (ACK received or not)
+                dataSegment, addr = self.server.listen_single_segment()
+                if (not dataSegment.valid_checksum()):
+                    print(f"[!] Checksum failed")
+                if (dataSegment.get_flag().SYN and dataSegment.get_flag().ACK):
+                    print(f"[!] ACK to {client_addr[0]}:{client_addr[1]} failed")
+                    print(f"[!] Resending ACK...")
+            except socket.timeout:
+                print(f"[!] Three-way handshake with client {client_addr[0]}:{client_addr[1]} success")
+                ack = True
 
 
 if __name__ == '__main__':
