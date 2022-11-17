@@ -5,6 +5,7 @@ import lib.argParser as argParser
 import lib.config as config
 import socket
 import math
+import os
 
 class Server:
     def __init__(self):
@@ -20,6 +21,10 @@ class Server:
 
         # file transer
         self.path = args.path
+        if (not os.path.exists(self.path)):
+            print(f"[!] File {self.path} not found")
+            exit()
+
         with open(self.path, "rb") as f:
             f.seek(0,2)
             self.fileSize = f.tell()
@@ -27,6 +32,8 @@ class Server:
         self.segment = math.ceil(self.fileSize / (config.SEGMENT_DATA_SIZE))
 
         print(f"[!] Server is running on {self.ip}:{self.port}")
+        print(f"[!] File: {os.path.basename(self.path)} with size {self.fileSize} bytes")
+        print(f"[!] Segment: {self.segment} segments")
         print(f"[!] Waiting for client to connect...")
 
     def listen_for_clients(self):
@@ -111,6 +118,7 @@ class Server:
                     self.server.send_data(dataSegment, client_addr)
                     print(f"[Segment SEQ={i}] Sent to {client_addr[0]}:{client_addr[1]}")
         
+        # initiating four-way handshake to close connection
         # send FIN to client
         # will be sent repeatedly to ensure FIN is received by client
         finAck = False
@@ -124,10 +132,14 @@ class Server:
                 # listen for FIN-ACK
                 respFlag = self.server.listen_single_segment()[0].get_flag()
                 if (respFlag.FIN and respFlag.ACK):
-                    print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} success")
+                    print(f"[!] FIN-ACK file transfer with {client_addr[0]}:{client_addr[1]} success")
+                    # sending last ACK to finalize closing connection
+                    dataSegment =  Segment()
+                    dataSegment.set_flag([segment.ACK_FLAG])
+                    self.server.send_data(dataSegment, client_addr)
                     finAck = True
                 else:
-                    print(f"[!] ACK file transfer with {client_addr[0]}:{client_addr[1]} failed. Resending FIN...")
+                    print(f"[!] FIN-ACK file transfer with {client_addr[0]}:{client_addr[1]} failed. Resending FIN...")
             except socket.timeout:
                 # ignore FIN-ACK after certain period of time (assume FIN is received)
                 # for when client already sends FIN-ACK, yet server does not receive it

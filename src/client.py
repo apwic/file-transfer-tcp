@@ -72,7 +72,7 @@ class Client:
             print(f"Listening for file transfers...")
             while(not(fin)):
                 try:
-                    dataSegment, addr = self.client.listen_single_segment()
+                    dataSegment, _ = self.client.listen_single_segment()
                     self.client.set_timeout(config.LISTEN_TRANSFER_TIMEOUT)
                     if (dataSegment.valid_checksum()):
                         seqNum = dataSegment.get_header()["seqNum"]
@@ -90,7 +90,7 @@ class Client:
                             finAckResp = Segment()
                             finAckResp.set_flag([segment.ACK_FLAG, segment.FIN_FLAG])
                             self.client.send_data(finAckResp, (self.ip, self.dest_port))
-                            print(f"[!] File transfer completed, sending FIN")
+                            print(f"[!] File transfer completed, sending FIN-ACK")
                     else:
                         print(f"[Segment SEQ={seqNum}] Checksum failed. Ack prev sequence number")
 
@@ -101,10 +101,17 @@ class Client:
                     ackResp.set_header({'seqNum': 0, 'ackNum': reqNum-1})
                     self.client.send_data(ackResp, (self.ip, self.dest_port))
 
-        # close connection
+        # close connection, by receving final ACK from server
+        # doesnt matter if ACK is lost, client will timeout and close connection
         print(f"[!] Closing connection")
-        self.client.close_socket()
+        try:
+            dataSegment, _  = self.client.listen_single_segment()
+            if (dataSegment.get_flag().ACK):
+                print(f"[!] ACK received, Connection closed")
+        except socket.timeout:
+            print(f"[!] ACK not received timed out, Connection closed")
 
+        self.client.close_socket()
 
 if __name__ == '__main__':
     main = Client()
